@@ -4,6 +4,7 @@ const ctx = canvas.getContext("2d");
 
 const scoreElement = document.getElementById("score");
 const bestElement = document.getElementById("best");
+const coinsElement = document.getElementById("coins");
 const overlay = document.getElementById("overlay");
 const message = document.getElementById("message");
 const instructions = document.getElementById("instructions");
@@ -28,6 +29,8 @@ let playing = false;
 let lastTime = 0;
 let animationId = null;
 let groundOffset = 0;
+let coins = [];
+let coinCount = 0;
 
 bestElement.textContent = best;
 
@@ -60,11 +63,14 @@ function createBird() {
 function resetGame() {
   bird = createBird();
   pipes = [];
+  coins = [];
   score = 0;
+  coinCount = 0;
   groundOffset = 0;
   lastTime = 0;
   playing = true;
-
+  
+  coinsElement.textContent = coinCount;
   scoreElement.textContent = score;
   overlay.classList.add("hidden");
 
@@ -90,6 +96,16 @@ function makePipe(x) {
     passed: false
   };
 }
+
+function makeCoin(x, y) {
+  return {
+    x: x,
+    y: y,
+    size: 18,
+    collected: false
+  };
+}
+
 
 function flap() {
   if (!playing) return;
