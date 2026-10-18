@@ -245,3 +245,67 @@ button:focus-visible {
     transition: none;
   }
 }
+
+
+/* ===== RETRO ARCADE COIN COUNTER ===== */
+
+.score-bar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.score-box {
+  min-width: 0;
+  border: 3px solid #29334f;
+  border-radius: 4px;
+  background: #fff4bd;
+  box-shadow: 3px 3px 0 #29334f;
+  padding: 9px 4px;
+}
+
+.score-box span {
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: #55442c;
+}
+
+.score-box strong {
+  font-family: "Courier New", monospace;
+  font-size: 23px;
+  font-weight: 900;
+  color: #29334f;
+}
+
+.coin-box {
+  background: #ffe078;
+  border-color: #9b651b;
+  box-shadow: 3px 3px 0 #9b651b;
+}
+
+.coin-box span {
+  color: #75440e;
+}
+
+.coin-box strong {
+  color: #75440e;
+}
+
+@media (max-width: 360px) {
+  .score-bar {
+    gap: 5px;
+  }
+
+  .score-box {
+    padding: 8px 2px;
+  }
+
+  .score-box strong {
+    font-size: 19px;
+  }
+
+  .score-box span {
+    font-size: 8px;
+  }
+}
+
