@@ -206,9 +206,12 @@ function drawBackground() {
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-  drawCloud(65, 100, 0.9);
-  drawCloud(290, 175, 0.75);
-  drawCloud(180, 340, 0.6);
+  // Slowly drifting clouds
+const t = performance.now() / 1000;
+
+drawCloud(65 - (t * 12) % 460, 100, 0.9);
+drawCloud(290 - (t * 8) % 460, 175, 0.75);
+drawCloud(180 - (t * 15) % 460, 340, 0.6);
 }
 
 function drawCloud(x, y, scale) {
@@ -310,11 +313,26 @@ function drawBird() {
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  // Wing.
+  
+  // Animated pixel-style wing
+  const flap = Math.sin(performance.now() / 65);
+
+  ctx.save();
+  ctx.translate(-4, 3 + flap * 3);
+  ctx.rotate(flap * 0.35);
+
+  ctx.fillStyle = "#e8a51d";
+  ctx.fillRect(-8, -4, 11, 9);
+
   ctx.fillStyle = "#fff0a1";
-  ctx.beginPath();
-  ctx.ellipse(-4, 4, 8, 5, -0.35, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.fillRect(-7, -4, 9, 6);
+
+  ctx.fillStyle = "#ffe07a";
+  ctx.fillRect(-5, -2, 6, 3);
+
+  ctx.restore();
+
+  
 
   // Eye.
   ctx.fillStyle = "#ffffff";
