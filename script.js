@@ -363,9 +363,47 @@ function draw() {
   for (const pipe of pipes) {
     drawPipe(pipe);
   }
-
+// Draw all uncollected coins
+for (const coin of coins) {
+  if (!coin.collected) {
+    drawCoin(coin);
+  }
+}
   drawGround();
   drawBird();
+  
+function drawCoin(coin) {
+  const time = performance.now();
+  const spin = Math.abs(Math.cos(time / 140));
+  const size = coin.size || 18;
+
+  ctx.save();
+  ctx.translate(coin.x, coin.y);
+
+  // Dark pixel outline
+  ctx.fillStyle = "#8b510c";
+  ctx.fillRect(-size / 2, -size / 2, size, size);
+
+  // Spinning golden centre
+  const width = Math.max(3, Math.round(size * spin));
+
+  ctx.fillStyle = "#ffbd24";
+  ctx.fillRect(-width / 2, -size / 2 + 2, width, size - 4);
+
+  // Bright pixel highlight
+  if (width > 7) {
+    ctx.fillStyle = "#fff18a";
+    ctx.fillRect(-width / 2 + 2, -size / 2 + 4, 3, 5);
+  }
+
+  // Golden edge pixels
+  ctx.fillStyle = "#ffe45c";
+  ctx.fillRect(-width / 2, -size / 2, width, 3);
+  ctx.fillRect(-width / 2, size / 2 - 3, width, 3);
+
+  ctx.restore();
+}
+
 }
 
 function endGame() {
