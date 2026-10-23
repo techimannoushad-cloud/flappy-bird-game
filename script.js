@@ -85,10 +85,10 @@ function resetGame() {
 }
 
 function makePipe(x) {
-  const margin = 70;
+  const margin = 110;
   const availableHeight = HEIGHT - GROUND_HEIGHT;
   const gapCenter =
-    margin + Math.random() * (availableHeight - margin * 2);
+  150 + Math.random() * 180;
 
   return {
     x,
