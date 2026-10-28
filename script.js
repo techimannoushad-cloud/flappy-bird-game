@@ -21,39 +21,173 @@ const PIPE_GAP = 165;
 const PIPE_SPACING = 230;
 const PIPE_SPEED = 145;
 
+const SKINS = {
+  classic: {
+    name: "Classic Chick",
+    body: "#ffcf38",
+    wing: "#ffe07a",
+    darkWing: "#e8a51d",
+    outline: "#b87514",
+    beak: "#ff8438",
+    accent: "#fff0a1"
+  },
+  sky: {
+    name: "Sky Bird",
+    body: "#43c7ff",
+    wing: "#a8eaff",
+    darkWing: "#1689cf",
+    outline: "#12679d",
+    beak: "#ff983c",
+    accent: "#e4faff"
+  },
+  pink: {
+    name: "Pink Bird",
+    body: "#ff83c8",
+    wing: "#ffc2e4",
+    darkWing: "#d94391",
+    outline: "#a72c70",
+    beak: "#ffab43",
+    accent: "#fff0f8"
+  },
+  purple: {
+    name: "Purple Bird",
+    body: "#ad85ff",
+    wing: "#dfcaff",
+    darkWing: "#7750d9",
+    outline: "#5635a6",
+    beak: "#ffb14b",
+    accent: "#f5edff"
+  }
+};
+
+let selectedSkin = "classic";
 let bird;
 let pipes = [];
 let coins = [];
-let powerups = [];
 let particles = [];
 
 let score = 0;
 let coinCount = 0;
-let best = loadBest();
+let best = loadNumber("flappyBirdBest");
 let playing = false;
 let lastTime = 0;
 let animationId = null;
 let groundOffset = 0;
-let shieldCharges = 0;
-let shieldTime = 0;
-let pipeCount = 0;
+let gameTime = 0;
+let flapPulse = 0;
 
 bestElement.textContent = best;
 
-function loadBest() {
+// Save and load safely.
+function loadNumber(key) {
   try {
-    return Number(localStorage.getItem("flappyBirdBest")) || 0;
+    return Number(localStorage.getItem(key)) || 0;
   } catch {
     return 0;
   }
 }
 
-function saveBest() {
+function saveValue(key, value) {
   try {
-    localStorage.setItem("flappyBirdBest", String(best));
+    localStorage.setItem(key, String(value));
   } catch {
-    // Continue playing if storage is unavailable.
+    // The game still works if storage is unavailable.
   }
+}
+
+function loadSkin() {
+  try {
+    const saved = localStorage.getItem("flappyBirdSkin");
+    return SKINS[saved] ? saved : "classic";
+  } catch {
+    return "classic";
+  }
+}
+
+selectedSkin = loadSkin();
+
+// Create the character selection menu automatically.
+// No HTML edits are required.
+function createSkinMenu() {
+  const menu = document.createElement("div");
+
+  menu.id = "bird-skin-menu";
+
+  Object.assign(menu.style, {
+    display: "flex",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: "8px",
+    padding: "10px 6px",
+    margin: "8px 0",
+    fontFamily: "monospace",
+    color: "#26364f"
+  });
+
+  const title = document.createElement("div");
+  title.textContent = "CHOOSE YOUR BIRD";
+  Object.assign(title.style, {
+    width: "100%",
+    textAlign: "center",
+    fontWeight: "900",
+    fontSize: "12px",
+    letterSpacing: "2px",
+    marginBottom: "2px"
+  });
+
+  menu.appendChild(title);
+
+  for (const [id, skin] of Object.entries(SKINS)) {
+    const button = document.createElement("button");
+
+    button.type = "button";
+    button.dataset.skin = id;
+    button.textContent = skin.name;
+
+    Object.assign(button.style, {
+      padding: "9px 10px",
+      border: "3px solid #26364f",
+      borderRadius: "5px",
+      background: skin.body,
+      color: "#26364f",
+      fontWeight: "900",
+      fontSize: "11px",
+      fontFamily: "monospace",
+      cursor: "pointer",
+      boxShadow: "0 3px 0 #26364f"
+    });
+
+    button.addEventListener("click", () => {
+      selectedSkin = id;
+      saveValue("flappyBirdSkin", id);
+      updateSkinMenu();
+      createParticles(90, 70, 12, "#ffffff");
+      draw();
+    });
+
+    menu.appendChild(button);
+  }
+
+  // Put the menu directly above the game canvas.
+  canvas.parentElement.insertBefore(menu, canvas);
+
+  updateSkinMenu();
+}
+
+function updateSkinMenu() {
+  const menu = document.getElementById("bird-skin-menu");
+  if (!menu) return;
+
+  menu.querySelectorAll("button[data-skin]").forEach(button => {
+    const active = button.dataset.skin === selectedSkin;
+    const skin = SKINS[button.dataset.skin];
+
+    button.style.background = active ? "#fff2a8" : skin.body;
+    button.style.borderColor = active ? "#f0a51a" : "#26364f";
+    button.style.transform = active ? "translateY(-2px)" : "none";
+    button.setAttribute("aria-pressed", String(active));
+  });
 }
 
 function createBird() {
@@ -67,17 +201,11 @@ function createBird() {
 }
 
 function makePipe(x) {
-  const minCenter = 125;
-  const maxCenter = Math.min(
-    HEIGHT - GROUND_HEIGHT - 100,
-    340
-  );
-
   return {
     x,
-    gapCenter:
-      minCenter + Math.random() * (maxCenter - minCenter),
-    passed: false
+    gapCenter: 150 + Math.random() * 180,
+    passed: false,
+    coinMade: false
   };
 }
 
@@ -86,56 +214,50 @@ function makeCoin(x, y) {
     x,
     y,
     size: 18,
-    collected: false,
-    phase: Math.random() * Math.PI * 2
+    collected: false
   };
 }
 
-function makePowerup(x, y) {
-  return {
-    x,
-    y,
-    size: 24,
-    collected: false,
-    phase: Math.random() * Math.PI * 2
-  };
+function createParticles(x, y, amount, color) {
+  for (let i = 0; i < amount; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 35 + Math.random() * 125;
+
+    particles.push({
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 0.45 + Math.random() * 0.45,
+      maxLife: 0.9,
+      color,
+      size: 2 + Math.random() * 4
+    });
+  }
 }
 
 function resetGame() {
-  if (animationId !== null) {
-    cancelAnimationFrame(animationId);
-  }
-
   bird = createBird();
   pipes = [];
   coins = [];
-  powerups = [];
   particles = [];
 
   score = 0;
   coinCount = 0;
   groundOffset = 0;
-  shieldCharges = 0;
-  shieldTime = 0;
-  pipeCount = 0;
+  gameTime = 0;
   lastTime = 0;
   playing = true;
 
   scoreElement.textContent = score;
   coinsElement.textContent = coinCount;
-
-  startBtn.textContent = "Play Again ↻";
   overlay.classList.add("hidden");
 
-  const firstPipe = makePipe(WIDTH + 80);
-  pipes.push(firstPipe);
+  pipes.push(makePipe(WIDTH + 80));
 
-  coins.push(
-    makeCoin(
-      firstPipe.x + PIPE_WIDTH + 35,
-      firstPipe.gapCenter
-    )
-  );
+  if (animationId !== null) {
+    cancelAnimationFrame(animationId);
+  }
 
   draw();
   animationId = requestAnimationFrame(gameLoop);
@@ -143,7 +265,10 @@ function resetGame() {
 
 function flap() {
   if (!playing) return;
+
   bird.velocity = FLAP_POWER;
+  flapPulse = 0.12;
+  createParticles(bird.x - 8, bird.y + 5, 3, "#fff0a1");
 }
 
 function gameLoop(timestamp) {
@@ -154,6 +279,8 @@ function gameLoop(timestamp) {
     : 0;
 
   lastTime = timestamp;
+  gameTime += delta;
+  flapPulse = Math.max(0, flapPulse - delta);
 
   update(delta);
   draw();
@@ -163,41 +290,19 @@ function gameLoop(timestamp) {
   }
 }
 
-function addSparkles(x, y, amount = 12) {
-  for (let i = 0; i < amount; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const speed = 35 + Math.random() * 110;
-
-    particles.push({
-      x,
-      y,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
-      life: 0.45 + Math.random() * 0.4,
-      maxLife: 0.85,
-      size: 3 + Math.random() * 4,
-      color: Math.random() > 0.35
-        ? "#ffe45c"
-        : "#ffffff"
-    });
-  }
-}
-
 function update(delta) {
   bird.velocity += GRAVITY * delta;
   bird.y += bird.velocity * delta;
 
-  bird.rotation = Math.min(
-    Math.max(bird.velocity / 650, -0.45),
-    1.1
+  bird.rotation = Math.max(
+    -0.45,
+    Math.min(bird.velocity / 650, 1.1)
   );
 
   groundOffset =
     (groundOffset + PIPE_SPEED * delta) % 32;
 
-  shieldTime = Math.max(0, shieldTime - delta);
-
-  // Move pipes and check collisions.
+  // Move pipes and award points.
   for (const pipe of pipes) {
     pipe.x -= PIPE_SPEED * delta;
 
@@ -209,20 +314,12 @@ function update(delta) {
       bird.x - bird.radius < pipe.x + PIPE_WIDTH;
 
     if (overlapsX) {
-      const hitsTop = bird.y - bird.radius < topHeight;
-      const hitsBottom = bird.y + bird.radius > bottomY;
-
-      if (hitsTop || hitsBottom) {
-        if (shieldTime <= 0) {
-          if (shieldCharges > 0) {
-            shieldCharges--;
-            shieldTime = 1.4;
-            addSparkles(bird.x, bird.y, 18);
-          } else {
-            endGame();
-            return;
-          }
-        }
+      if (
+        bird.y - bird.radius < topHeight ||
+        bird.y + bird.radius > bottomY
+      ) {
+        endGame();
+        return;
       }
     }
 
@@ -230,87 +327,45 @@ function update(delta) {
       pipe.passed = true;
       score++;
       scoreElement.textContent = score;
+      createParticles(bird.x, bird.y, 5, "#ffe45c");
     }
-  }
 
-  pipes = pipes.filter(
-    pipe => pipe.x + PIPE_WIDTH > -15
-  );
-
-  const lastPipe = pipes[pipes.length - 1];
-
-  if (!lastPipe || lastPipe.x < WIDTH - PIPE_SPACING) {
-    const newPipe = makePipe(WIDTH + 10);
-    pipes.push(newPipe);
-    pipeCount++;
-
-    // A collectible coin accompanies every pipe.
-    coins.push(
-      makeCoin(
-        newPipe.x + PIPE_WIDTH + 35,
-        newPipe.gapCenter
-      )
-    );
-
-    // A shield appears every third new pipe.
-    if (pipeCount % 3 === 0) {
-      powerups.push(
-        makePowerup(
-          newPipe.x + PIPE_WIDTH + 80,
-          newPipe.gapCenter
-        )
+    // Put a coin inside each pipe gap.
+    if (!pipe.coinMade && pipe.x < WIDTH - 70) {
+      pipe.coinMade = true;
+      coins.push(
+        makeCoin(pipe.x + PIPE_WIDTH / 2, pipe.gapCenter)
       );
     }
   }
 
-  // Move and collect coins.
-  for (const coin of coins) {
-    if (coin.collected) continue;
+  pipes = pipes.filter(pipe => pipe.x + PIPE_WIDTH > -10);
 
+  const lastPipe = pipes[pipes.length - 1];
+
+  if (!lastPipe || lastPipe.x < WIDTH - PIPE_SPACING) {
+    pipes.push(makePipe(WIDTH + 10));
+  }
+
+  // Coin movement and collection.
+  for (const coin of coins) {
     coin.x -= PIPE_SPEED * delta;
 
     const dx = bird.x - coin.x;
     const dy = bird.y - coin.y;
 
-    if (
-      Math.hypot(dx, dy) <
-      bird.radius + coin.size / 2
-    ) {
+    if (!coin.collected && Math.hypot(dx, dy) < bird.radius + 10) {
       coin.collected = true;
       coinCount++;
       coinsElement.textContent = coinCount;
-      addSparkles(coin.x, coin.y, 12);
+      saveValue("flappyBirdCoins", coinCount);
+      createParticles(coin.x, coin.y, 12, "#ffcf38");
     }
   }
 
-  coins = coins.filter(
-    coin => !coin.collected && coin.x > -30
-  );
+  coins = coins.filter(coin => !coin.collected && coin.x > -30);
 
-  // Move and collect shield power-ups.
-  for (const item of powerups) {
-    if (item.collected) continue;
-
-    item.x -= PIPE_SPEED * delta;
-
-    const dx = bird.x - item.x;
-    const dy = bird.y - item.y;
-
-    if (
-      Math.hypot(dx, dy) <
-      bird.radius + item.size / 2
-    ) {
-      item.collected = true;
-      shieldCharges++;
-      addSparkles(item.x, item.y, 18);
-    }
-  }
-
-  powerups = powerups.filter(
-    item => !item.collected && item.x > -35
-  );
-
-  // Update floating sparkle particles.
+  // Update sparkle particles.
   for (const particle of particles) {
     particle.x += particle.vx * delta;
     particle.y += particle.vy * delta;
@@ -318,47 +373,26 @@ function update(delta) {
     particle.life -= delta;
   }
 
-  particles = particles.filter(
-    particle => particle.life > 0
-  );
+  particles = particles.filter(particle => particle.life > 0);
 
   // Ceiling and ground collisions.
-  const hitsBoundary =
+  if (
     bird.y - bird.radius < 0 ||
-    bird.y + bird.radius > HEIGHT - GROUND_HEIGHT;
-
-  if (hitsBoundary && shieldTime <= 0) {
-    if (shieldCharges > 0) {
-      shieldCharges--;
-      shieldTime = 1.4;
-
-      bird.y = Math.max(
-        bird.radius,
-        Math.min(
-          bird.y,
-          HEIGHT - GROUND_HEIGHT - bird.radius
-        )
-      );
-
-      bird.velocity = -100;
-      addSparkles(bird.x, bird.y, 18);
-    } else {
-      endGame();
-      return;
-    }
+    bird.y + bird.radius > HEIGHT - GROUND_HEIGHT
+  ) {
+    endGame();
   }
 }
 
 function drawBackground() {
   const sky = ctx.createLinearGradient(0, 0, 0, HEIGHT);
-
   sky.addColorStop(0, "#79d8f5");
   sky.addColorStop(1, "#e1f9ff");
 
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-  const t = performance.now() / 1000;
+  const t = gameTime || performance.now() / 1000;
 
   drawCloud(65 - (t * 12) % (WIDTH + 100), 100, 0.9);
   drawCloud(290 - (t * 8) % (WIDTH + 100), 175, 0.75);
@@ -366,17 +400,17 @@ function drawBackground() {
 }
 
 function drawCloud(x, y, scale) {
-  if (x < -70) x += WIDTH + 100;
-
   ctx.save();
-  ctx.translate(Math.round(x), y);
+  ctx.translate(x, y);
   ctx.scale(scale, scale);
 
-  ctx.fillStyle = "rgba(255,255,255,0.7)";
-  ctx.fillRect(-5, -5, 48, 20);
-  ctx.fillRect(5, -18, 26, 20);
-  ctx.fillRect(20, -10, 28, 18);
-  ctx.fillRect(8, 8, 28, 10);
+  ctx.fillStyle = "rgba(255,255,255,0.78)";
+  ctx.beginPath();
+  ctx.arc(0, 0, 19, 0, Math.PI * 2);
+  ctx.arc(22, -10, 25, 0, Math.PI * 2);
+  ctx.arc(47, 0, 18, 0, Math.PI * 2);
+  ctx.arc(23, 7, 20, 0, Math.PI * 2);
+  ctx.fill();
 
   ctx.restore();
 }
@@ -384,17 +418,10 @@ function drawCloud(x, y, scale) {
 function drawPipe(pipe) {
   const topHeight = pipe.gapCenter - PIPE_GAP / 2;
   const bottomY = pipe.gapCenter + PIPE_GAP / 2;
-  const bottomHeight =
-    HEIGHT - GROUND_HEIGHT - bottomY;
+  const bottomHeight = HEIGHT - GROUND_HEIGHT - bottomY;
 
   drawPipeBody(pipe.x, 0, PIPE_WIDTH, topHeight, true);
-  drawPipeBody(
-    pipe.x,
-    bottomY,
-    PIPE_WIDTH,
-    bottomHeight,
-    false
-  );
+  drawPipeBody(pipe.x, bottomY, PIPE_WIDTH, bottomHeight, false);
 }
 
 function drawPipeBody(x, y, width, height, isTop) {
@@ -420,80 +447,6 @@ function drawPipeBody(x, y, width, height, isTop) {
   ctx.strokeRect(x - 5, capY, width + 10, capHeight);
 }
 
-function drawCoin(coin) {
-  const time = performance.now() / 140 + coin.phase;
-  const spin = Math.abs(Math.cos(time));
-  const size = coin.size;
-  const width = Math.max(3, Math.round(size * spin));
-
-  ctx.save();
-  ctx.translate(Math.round(coin.x), Math.round(coin.y));
-
-  ctx.fillStyle = "#8b510c";
-  ctx.fillRect(-size / 2, -size / 2, size, size);
-
-  ctx.fillStyle = "#ffbd24";
-  ctx.fillRect(-width / 2, -size / 2 + 2, width, size - 4);
-
-  if (width > 7) {
-    ctx.fillStyle = "#fff18a";
-    ctx.fillRect(-width / 2 + 2, -size / 2 + 4, 3, 5);
-  }
-
-  ctx.fillStyle = "#ffe45c";
-  ctx.fillRect(-width / 2, -size / 2, width, 3);
-  ctx.fillRect(-width / 2, size / 2 - 3, width, 3);
-
-  ctx.restore();
-}
-
-function drawPowerup(item) {
-  const bob = Math.sin(
-    performance.now() / 180 + item.phase
-  ) * 4;
-
-  ctx.save();
-  ctx.translate(
-    Math.round(item.x),
-    Math.round(item.y + bob)
-  );
-
-  // Blue pixel shield.
-  ctx.fillStyle = "#173b83";
-  ctx.fillRect(-10, -12, 20, 20);
-  ctx.fillRect(-7, 8, 14, 5);
-  ctx.fillRect(-4, 13, 8, 4);
-
-  ctx.fillStyle = "#55d9ff";
-  ctx.fillRect(-7, -9, 14, 15);
-  ctx.fillRect(-4, 6, 8, 5);
-
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(-3, -6, 3, 7);
-  ctx.fillRect(0, -2, 3, 3);
-
-  ctx.restore();
-}
-
-function drawParticles() {
-  for (const particle of particles) {
-    ctx.globalAlpha = Math.max(
-      0,
-      particle.life / particle.maxLife
-    );
-
-    ctx.fillStyle = particle.color;
-    ctx.fillRect(
-      Math.round(particle.x),
-      Math.round(particle.y),
-      particle.size,
-      particle.size
-    );
-  }
-
-  ctx.globalAlpha = 1;
-}
-
 function drawGround() {
   const y = HEIGHT - GROUND_HEIGHT;
 
@@ -515,65 +468,105 @@ function drawGround() {
 }
 
 function drawBird() {
-  ctx.save();
+  const skin = SKINS[selectedSkin];
+  const wingWave = Math.sin(performance.now() / 65);
 
-  ctx.translate(Math.round(bird.x), Math.round(bird.y));
+  ctx.save();
+  ctx.translate(bird.x, bird.y);
   ctx.rotate(bird.rotation);
 
-  ctx.fillStyle = "#f0a51a";
-  ctx.fillRect(-23, -8, 9, 7);
-  ctx.fillRect(-21, 0, 8, 6);
+  // Pixel tail.
+  ctx.fillStyle = skin.darkWing;
+  ctx.fillRect(-22, -5, 7, 5);
+  ctx.fillRect(-19, 0, 5, 5);
 
-  ctx.fillStyle = "#ffcf38";
-  ctx.beginPath();
-  ctx.arc(0, 0, bird.radius, 0, Math.PI * 2);
-  ctx.fill();
+  // Pixel body with a soft shadow.
+  ctx.fillStyle = "rgba(30,45,65,0.18)";
+  ctx.fillRect(-12, 10, 25, 5);
 
-  ctx.strokeStyle = "#e6a51a";
-  ctx.lineWidth = 2;
-  ctx.stroke();
+  ctx.fillStyle = skin.outline;
+  ctx.fillRect(-15, -12, 27, 25);
 
-  const flap = Math.sin(performance.now() / 65);
+  ctx.fillStyle = skin.body;
+  ctx.fillRect(-13, -14, 25, 25);
+  ctx.fillRect(-8, -17, 17, 4);
+  ctx.fillRect(-17, -8, 4, 13);
 
+  // Animated pixel wing.
   ctx.save();
-  ctx.translate(-4, 3 + flap * 3);
-  ctx.rotate(flap * 0.35);
+  ctx.translate(-4, 3 + wingWave * 3);
+  ctx.rotate(wingWave * 0.18);
 
-  ctx.fillStyle = "#e8a51d";
-  ctx.fillRect(-8, -4, 11, 9);
+  ctx.fillStyle = skin.darkWing;
+  ctx.fillRect(-9, -4, 12, 10);
 
-  ctx.fillStyle = "#fff0a1";
-  ctx.fillRect(-7, -4, 9, 6);
+  ctx.fillStyle = skin.wing;
+  ctx.fillRect(-7, -4, 9, 7);
 
-  ctx.fillStyle = "#ffe07a";
-  ctx.fillRect(-5, -2, 6, 3);
-
+  ctx.fillStyle = skin.accent;
+  ctx.fillRect(-5, -3, 5, 3);
   ctx.restore();
 
+  // Eye.
   ctx.fillStyle = "#ffffff";
-  ctx.beginPath();
-  ctx.arc(6, -5, 5, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.fillRect(4, -8, 8, 8);
 
   ctx.fillStyle = "#263238";
-  ctx.beginPath();
-  ctx.arc(8, -5, 2.4, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.fillRect(8, -6, 3, 4);
 
-  ctx.fillStyle = "#ff8438";
-  ctx.fillRect(12, 0, 10, 5);
-  ctx.fillRect(12, 5, 6, 3);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(9, -6, 1, 1);
 
-  // Show an aura when shield protection is active.
-  if (shieldTime > 0) {
-    ctx.strokeStyle = "#55d9ff";
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(0, 0, 23, 0, Math.PI * 2);
-    ctx.stroke();
+  // Beak.
+  ctx.fillStyle = skin.beak;
+  ctx.fillRect(12, -1, 7, 5);
+  ctx.fillRect(15, 4, 4, 3);
+
+  // Tiny feet.
+  ctx.fillStyle = "#e87832";
+  ctx.fillRect(-5, 12, 5, 3);
+  ctx.fillRect(5, 12, 5, 3);
+
+  ctx.restore();
+}
+
+function drawCoin(coin) {
+  const spin = Math.abs(Math.cos(performance.now() / 140));
+  const size = coin.size;
+  const width = Math.max(3, Math.round(size * spin));
+
+  ctx.save();
+  ctx.translate(coin.x, coin.y);
+
+  ctx.fillStyle = "#8b510c";
+  ctx.fillRect(-size / 2, -size / 2, size, size);
+
+  ctx.fillStyle = "#ffbd24";
+  ctx.fillRect(-width / 2, -size / 2 + 2, width, size - 4);
+
+  ctx.fillStyle = "#fff18a";
+  if (width > 7) {
+    ctx.fillRect(-width / 2 + 2, -size / 2 + 4, 3, 5);
   }
 
   ctx.restore();
+}
+
+function drawParticles() {
+  for (const particle of particles) {
+    ctx.globalAlpha = Math.max(0, particle.life / particle.maxLife);
+    ctx.fillStyle = particle.color;
+
+    const size = Math.max(1, Math.round(particle.size));
+    ctx.fillRect(
+      Math.round(particle.x),
+      Math.round(particle.y),
+      size,
+      size
+    );
+  }
+
+  ctx.globalAlpha = 1;
 }
 
 function draw() {
@@ -587,34 +580,27 @@ function draw() {
     if (!coin.collected) drawCoin(coin);
   }
 
-  for (const item of powerups) {
-    if (!item.collected) drawPowerup(item);
-  }
-
-  drawGround();
-  drawBird();
   drawParticles();
 
-  // Small power-up status indicator.
-  if (shieldCharges > 0) {
-    ctx.fillStyle = "#173b83";
-    ctx.font = "bold 14px monospace";
-    ctx.fillText("SHIELD x" + shieldCharges, 12, 24);
-  }
+  drawGround();
+
+  if (bird) drawBird();
 }
 
 function endGame() {
+  if (!playing) return;
+
   playing = false;
 
   if (score > best) {
     best = score;
     bestElement.textContent = best;
-    saveBest();
+    saveValue("flappyBirdBest", best);
   }
 
   message.textContent = "Game Over! 🐣";
   instructions.textContent =
-    `You scored ${score} point${score === 1 ? "" : "s"} and collected ${coinCount} coin${coinCount === 1 ? "" : "s"}!`;
+    `You scored ${score} point${score === 1 ? "" : "s"}. Try again!`;
 
   startBtn.textContent = "Play Again ↻";
   overlay.classList.remove("hidden");
@@ -624,17 +610,11 @@ startBtn.addEventListener("click", resetGame);
 
 canvas.addEventListener("pointerdown", event => {
   event.preventDefault();
-
-  if (playing) {
-    flap();
-  }
+  if (playing) flap();
 });
 
 document.addEventListener("keydown", event => {
-  if (
-    event.code === "Space" ||
-    event.code === "ArrowUp"
-  ) {
+  if (event.code === "Space" || event.code === "ArrowUp") {
     event.preventDefault();
 
     if (playing && !event.repeat) {
@@ -645,14 +625,9 @@ document.addEventListener("keydown", event => {
   }
 });
 
-// Draw the initial preview.
+// Start with a preview without starting the game.
 bird = createBird();
 pipes = [makePipe(WIDTH + 80)];
-coins = [
-  makeCoin(
-    WIDTH + 80 + PIPE_WIDTH + 35,
-    pipes[0].gapCenter
-  )
-];
 
+createSkinMenu();
 draw();
